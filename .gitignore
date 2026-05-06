@@ -1,0 +1,32 @@
+spotify_playlist*
+
+# Binaries
+spotsonic
+spotsonic.exe
+*.exe
+*.out
+*.test
+
+# Build artifacts
+dist/
+
+# Config with credentials
+config.yaml
+config.yml
+.env
+
+# State file (contains playlist IDs, keep private or back up separately)
+spotsonic-state.json
+
+# Unmatched reports
+unmatched*.csv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
