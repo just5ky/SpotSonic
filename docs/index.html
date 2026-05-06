@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpotSonic — Exportify to Navidrome</title>
+  <meta name="description" content="Bulk-convert Exportify CSV playlists into Navidrome via the Subsonic API, with incremental weekly updates." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #121212;
+      --surface:     #1a1a1a;
+      --surface2:    #282828;
+      --border:      #333;
+      --green:       #1ed760;
+      --orange:      #ff6337;
+      --text:        #ffffff;
+      --text-muted:  #b3b3b3;
+      --text-dim:    #6a6a6a;
+      --radius:      10px;
+      --font:        'Inter', system-ui, sans-serif;
+      --mono:        'JetBrains Mono', 'Fira Code', monospace;
+      --nav-h:       60px;
+      --max-w:       1100px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Nav ───────────────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--nav-h);
+      background: rgba(18,18,18,.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(1rem, 5vw, 3rem);
+    }
+
+    .nav-logo {
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      text-decoration: none;
+      color: var(--text);
+    }
+    .nav-logo .dot-g { color: var(--green); }
+    .nav-logo .dot-o { color: var(--orange); }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.75rem;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: .9rem;
+      font-weight: 500;
+      transition: color .15s;
+    }
+    .nav-links a:hover { color: var(--text); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .45rem 1rem;
+      border-radius: 6px;
+      font-size: .875rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: opacity .15s, transform .1s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn:hover { opacity: .88; transform: translateY(-1px); }
+    .btn-green  { background: var(--green);  color: #000; }
+    .btn-ghost  { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: #666; }
+
+    .hamburger { display: none; background: none; border: none; cursor: pointer; padding: .25rem; }
+    .hamburger span {
+      display: block; width: 22px; height: 2px;
+      background: var(--text-muted); margin: 4px 0;
+      transition: transform .2s, opacity .2s;
+    }
+
+    /* ── Sections ──────────────────────────────────────────── */
+    section { padding: 5rem clamp(1rem, 5vw, 3rem); }
+    .container { max-width: var(--max-w); margin: 0 auto; }
+
+    .section-tag {
+      display: inline-block;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-bottom: .75rem;
+    }
+    h2 {
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-weight: 700;
+      line-height: 1.25;
+      margin-bottom: 1rem;
+    }
+    .lead {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      max-width: 600px;
+      margin-bottom: 2.5rem;
+    }
+
+    /* ── Hero ──────────────────────────────────────────────── */
+    #hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding-top: calc(var(--nav-h) + 3rem);
+      background: radial-gradient(ellipse 70% 60% at 50% -10%, rgba(30,215,96,.12) 0%, transparent 70%);
+    }
+    .hero-inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .5rem;
+      background: rgba(30,215,96,.1);
+      border: 1px solid rgba(30,215,96,.25);
+      border-radius: 100px;
+      padding: .3rem .85rem;
+      font-size: .8rem;
+      color: var(--green);
+      font-weight: 500;
+      margin-bottom: 1.25rem;
+    }
+    .hero-badge .pulse {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .35; }
+    }
+
+    .hero-title {
+      font-size: clamp(2.4rem, 5vw, 3.8rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -.02em;
+      margin-bottom: 1.25rem;
+    }
+    .hero-title .highlight-g { color: var(--green); }
+    .hero-title .highlight-o { color: var(--orange); }
+
+    .hero-sub {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      margin-bottom: 2rem;
+      max-width: 480px;
+    }
+    .hero-cta { display: flex; gap: .75rem; flex-wrap: wrap; }
+
+    /* Terminal */
+    .terminal {
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+    .terminal-bar {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .75rem 1rem;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #febc2e; }
+    .dot-gr { background: #28c840; }
+    .terminal-title { font-size: .75rem; color: var(--text-dim); margin-left: auto; font-family: var(--mono); }
+
+    .terminal-body {
+      padding: 1.25rem 1.5rem;
+      font-family: var(--mono);
+      font-size: .8rem;
+      line-height: 1.8;
+      min-height: 260px;
+    }
+    .t-line { display: block; white-space: pre; }
+    .t-cmd  { color: #7ec8e3; }
+    .t-ok   { color: var(--green); }
+    .t-err  { color: #fc8181; }
+    .t-info { color: var(--text-muted); }
+    .t-head { color: #ffd700; font-weight: 500; }
+    .t-dim  { color: var(--text-dim); }
+    .cursor { display: inline-block; width: 8px; height: 14px; background: var(--green); vertical-align: middle; animation: blink .9s step-end infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* ── Feature cards ─────────────────────────────────────── */
+    #features { background: var(--surface); }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.25rem;
+      margin-top: 2.5rem;
+    }
+    .card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      transition: border-color .2s, transform .2s;
+    }
+    .card:hover { border-color: var(--green); transform: translateY(-3px); }
+    .card-icon { font-size: 2rem; margin-bottom: 1rem; }
+    .card h3 { font-size: 1.05rem; font-weight: 600; margin-bottom: .5rem; }
+    .card p { font-size: .9rem; color: var(--text-muted); line-height: 1.55; }
+
+    /* ── Steps ─────────────────────────────────────────────── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0;
+      margin-top: 2.5rem;
+      position: relative;
+    }
+    .step {
+      padding: 1.5rem;
+      position: relative;
+      text-align: center;
+    }
+    .step-num {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--green), #17a74a);
+      color: #000;
+      font-weight: 700;
+      font-size: .9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1rem;
+    }
+    .step h3 { font-size: .95rem; font-weight: 600; margin-bottom: .4rem; }
+    .step p  { font-size: .85rem; color: var(--text-muted); }
+
+    /* ── Code blocks ───────────────────────────────────────── */
+    .code-wrap {
+      position: relative;
+      margin: 1.25rem 0;
+    }
+    pre {
+      background: #0d0d0d;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      font-family: var(--mono);
+      font-size: .82rem;
+      line-height: 1.75;
+      color: #e2e8f0;
+    }
+    .copy-btn {
+      position: absolute;
+      top: .6rem;
+      right: .6rem;
+      padding: .3rem .65rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text-muted);
+      font-size: .75rem;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background .15s, color .15s;
+    }
+    .copy-btn:hover { background: var(--border); color: var(--text); }
+    .copy-btn.copied { background: rgba(30,215,96,.15); color: var(--green); border-color: var(--green); }
+
+    /* syntax tokens */
+    .kw  { color: #ff79c6; }
+    .str { color: var(--green); }
+    .cm  { color: var(--text-dim); font-style: italic; }
+    .fl  { color: #f1fa8c; }
+    .op  { color: #ff6337; }
+
+    /* ── Table ─────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; margin: 1.5rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    thead th {
+      text-align: left;
+      padding: .75rem 1rem;
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: .8rem;
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody td {
+      padding: .75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: rgba(255,255,255,.03); }
+    code {
+      font-family: var(--mono);
+      font-size: .82em;
+      background: rgba(255,255,255,.08);
+      padding: .1em .4em;
+      border-radius: 4px;
+      color: #e2e8f0;
+    }
+    .badge-req {
+      display: inline-block;
+      font-size: .7rem;
+      font-weight: 600;
+      background: rgba(255,99,55,.15);
+      color: var(--orange);
+      border: 1px solid rgba(255,99,55,.3);
+      border-radius: 4px;
+      padding: .05rem .35rem;
+      margin-left: .35rem;
+    }
+
+    /* ── Tabs ──────────────────────────────────────────────── */
+    .tabs { display: flex; gap: .5rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+    .tab {
+      padding: .45rem 1.1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: .875rem;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .tab.active { background: var(--green); border-color: var(--green); color: #000; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* ── State diagram ─────────────────────────────────────── */
+    .state-flow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin: 2rem 0;
+      flex-wrap: wrap;
+    }
+    .state-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      text-align: center;
+      min-width: 150px;
+    }
+    .state-box .icon { font-size: 1.75rem; margin-bottom: .5rem; }
+    .state-box h4 { font-size: .9rem; font-weight: 600; }
+    .state-box p  { font-size: .78rem; color: var(--text-muted); margin-top: .25rem; }
+    .state-arrow {
+      font-size: 1.4rem;
+      color: var(--text-dim);
+      padding: 0 .75rem;
+    }
+
+    /* ── Score bar ─────────────────────────────────────────── */
+    .score-row {
+      display: grid;
+      grid-template-columns: 120px 1fr 50px;
+      align-items: center;
+      gap: 1rem;
+      margin: .75rem 0;
+      font-size: .875rem;
+    }
+    .score-label { color: var(--text-muted); }
+    .score-bar-bg { background: var(--surface2); border-radius: 100px; height: 8px; overflow: hidden; }
+    .score-bar-fill { height: 100%; border-radius: 100px; background: linear-gradient(90deg, var(--green), #17c954); transition: width 1s ease; }
+    .score-val { color: var(--text); font-family: var(--mono); font-size: .8rem; text-align: right; }
+
+    /* ── Footer ────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem clamp(1rem, 5vw, 3rem);
+      text-align: center;
+      color: var(--text-dim);
+      font-size: .85rem;
+    }
+    footer a { color: var(--text-muted); text-decoration: none; }
+    footer a:hover { color: var(--green); }
+
+    /* ── Utilities ─────────────────────────────────────────── */
+    .divider { height: 1px; background: var(--border); margin: 0; }
+    .text-green  { color: var(--green); }
+    .text-orange { color: var(--orange); }
+    .mt-2 { margin-top: 2rem; }
+
+    /* ── Responsive ────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .hero-inner { grid-template-columns: 1fr; }
+      .terminal { display: none; }
+      .nav-links { display: none; flex-direction: column; position: absolute; top: var(--nav-h); left: 0; right: 0; background: var(--bg); border-bottom: 1px solid var(--border); padding: 1rem; gap: 1rem; }
+      .nav-links.open { display: flex; }
+      .hamburger { display: block; }
+      .state-flow { flex-direction: column; }
+      .state-arrow { transform: rotate(90deg); padding: .25rem 0; }
+    }
+
+    /* ── Scroll-reveal ─────────────────────────────────────── */
+    .reveal { opacity: 0; transform: translateY(20px); transition: opacity .5s ease, transform .5s ease; }
+    .reveal.visible { opacity: 1; transform: none; }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a href="#" class="nav-logo">
+    <span class="dot-g">Spot</span><span class="dot-o">Sonic</span>
+  </a>
+  <ul class="nav-links" id="nav-links">
+    <li><a href="#features">Features</a></li>
+    <li><a href="#install">Install</a></li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#scheduling">Scheduling</a></li>
+    <li>
+      <a href="https://github.com/justsky/spotsonic" class="btn btn-ghost" target="_blank" rel="noopener">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </li>
+  </ul>
+  <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="hero-inner container">
+    <div>
+      <div class="hero-badge"><span class="pulse"></span>Open Source · MIT License</div>
+      <h1 class="hero-title">
+        <span class="highlight-g">Spotify</span> playlists<br/>
+        into <span class="highlight-o">Navidrome</span>,<br/>
+        automatically.
+      </h1>
+      <p class="hero-sub">
+        Bulk-convert Exportify CSV exports into Navidrome playlists via the Subsonic API.
+        Fuzzy-matches tracks. Retries unmatched songs on weekly runs.
+      </p>
+      <div class="hero-cta">
+        <a href="#install" class="btn btn-green">Get Started</a>
+        <a href="https://github.com/justsky/spotsonic" class="btn btn-ghost" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+    </div>
+
+    <div class="terminal" aria-hidden="true">
+      <div class="terminal-bar">
+        <span class="dot dot-r"></span>
+        <span class="dot dot-y"></span>
+        <span class="dot dot-gr"></span>
+        <span class="terminal-title">spotsonic</span>
+      </div>
+      <div class="terminal-body" id="terminal-body"></div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="container reveal">
+    <span class="section-tag">Features</span>
+    <h2>Everything you need, nothing you don't</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="card-icon">🎵</div>
+        <h3>Bulk Convert</h3>
+        <p>Process a single CSV or an entire directory of 100+ Exportify playlists in one command.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔍</div>
+        <h3>Fuzzy Matching</h3>
+        <p>Two-pass Levenshtein search — title + artist weighted scoring. Handles typos, remasters, and alternate versions.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔄</div>
+        <h3>Incremental Updates</h3>
+        <p>Persistent state file tracks every unmatched track. Re-run weekly as your library grows — previously unmatched songs are retried automatically.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📅</div>
+        <h3>Schedulable</h3>
+        <p>Includes a <code>run.sh</code> wrapper and <code>setup_cron.sh</code> for hands-free weekly runs via WSL cron or Windows Task Scheduler.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">📋</div>
+        <h3>Unmatched Report</h3>
+        <p>Exports every track that couldn't be matched to a CSV. Use it to identify what's missing from your local library.</p>
+      </div>
+      <div class="card">
+        <div class="card-icon">⚡</div>
+        <h3>Zero Dependencies</h3>
+        <p>Pure Go standard library — no external runtime deps. Single static binary for Linux, macOS, and Windows.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- HOW IT WORKS -->
+<section id="how-it-works">
+  <div class="container reveal">
+    <span class="section-tag">How It Works</span>
+    <h2>Simple by design</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Parse CSVs</h3>
+        <p>Reads Exportify exports. Extracts Track Name, Artist, Album, and Spotify URI.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Search Library</h3>
+        <p>Calls Navidrome's <code>search3</code> API. Two passes: title-only, then artist + title.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Score &amp; Match</h3>
+        <p>Levenshtein similarity: title (60%) + artist (40%). Accepts matches above threshold.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <h3>Create Playlist</h3>
+        <p>Matched song IDs sent to <code>createPlaylist</code>. Large playlists chunked to 200 songs.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <h3>Save State</h3>
+        <p>Matched URIs + unmatched tracks persisted to JSON. Next run retries the unmatched.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- INSTALL -->
+<section id="install">
+  <div class="container reveal">
+    <span class="section-tag">Installation</span>
+    <h2>Get up and running</h2>
+
+    <p class="lead">Requires Go 1.22+ and a running Navidrome instance.</p>
+
+    <h3 style="font-size:1rem;font-weight:600;margin-bottom:.75rem;color:var(--text-muted);">Build from source</h3>
+    <div class="code-wrap">
+      <pre><span class="cm"># Clone and build</span>
+git clone https://github.com/justsky/spotsonic
+cd spotsonic
+go build -o spotsonic .</pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:.75rem 0;color:var(--text-muted);">Install with go install</h3>
+    <div class="code-wrap">
+      <pre>go install github.com/justsky/spotsonic@latest</pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:.75rem 0;color:var(--text-muted);">Download binary</h3>
+    <p style="color:var(--text-muted);font-size:.9rem;">
+      Pre-built binaries for Linux, macOS, and Windows are available on the
+      <a href="https://github.com/justsky/spotsonic/releases" target="_blank" rel="noopener" style="color:var(--green);">Releases page</a>.
+    </p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- USAGE -->
+<section id="usage">
+  <div class="container reveal">
+    <span class="section-tag">Usage</span>
+    <h2>CLI Reference</h2>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Flag</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>-server</code> <span class="badge-req">required</span></td>
+            <td>—</td>
+            <td>Navidrome URL, e.g. <code>http://localhost:4533</code></td>
+          </tr>
+          <tr>
+            <td><code>-user</code> <span class="badge-req">required</span></td>
+            <td>—</td>
+            <td>Navidrome username</td>
+          </tr>
+          <tr>
+            <td><code>-password</code> <span class="badge-req">required</span></td>
+            <td>—</td>
+            <td>Navidrome password</td>
+          </tr>
+          <tr>
+            <td><code>-input</code></td>
+            <td><code>.</code></td>
+            <td>CSV file or directory of CSV files</td>
+          </tr>
+          <tr>
+            <td><code>-state</code></td>
+            <td><code>spotsonic-state.json</code></td>
+            <td>State file for incremental updates</td>
+          </tr>
+          <tr>
+            <td><code>-threshold</code></td>
+            <td><code>0.80</code></td>
+            <td>Fuzzy match threshold 0.0–1.0. Lower = more matches, higher = stricter.</td>
+          </tr>
+          <tr>
+            <td><code>-dry-run</code></td>
+            <td><code>false</code></td>
+            <td>Preview matches without creating or modifying playlists</td>
+          </tr>
+          <tr>
+            <td><code>-report</code></td>
+            <td>—</td>
+            <td>Write unmatched tracks to this CSV file</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:2rem 0 .75rem;color:var(--text-muted);">First run — create all playlists</h3>
+    <div class="code-wrap">
+      <pre>spotsonic \
+  -server   http://localhost:4533 \
+  -user     admin \
+  -password secret \
+  -input    ./spotify_playlists/ \
+  -state    spotsonic-state.json \
+  -report   unmatched.csv</pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:1.5rem 0 .75rem;color:var(--text-muted);">Subsequent runs — the same command</h3>
+    <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:.75rem;">
+      SpotSonic detects first-run vs update automatically from the state file. Run the exact same command weekly.
+    </p>
+    <div class="code-wrap">
+      <pre>spotsonic \
+  -server   http://localhost:4533 \
+  -user     admin \
+  -password secret \
+  -input    ./spotify_playlists/ \
+  -state    spotsonic-state.json \
+  -report   unmatched.csv</pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- MATCHING -->
+<section id="matching">
+  <div class="container reveal">
+    <span class="section-tag">Matching</span>
+    <h2>How fuzzy matching works</h2>
+    <p class="lead">Each candidate from Navidrome is scored by combining title and artist similarity.</p>
+
+    <div class="score-row">
+      <span class="score-label">Title match</span>
+      <div class="score-bar-bg"><div class="score-bar-fill" style="width:60%"></div></div>
+      <span class="score-val">60%</span>
+    </div>
+    <div class="score-row">
+      <span class="score-label">Artist match</span>
+      <div class="score-bar-bg"><div class="score-bar-fill" style="width:40%;background:linear-gradient(90deg,var(--orange),#cc4f29)"></div></div>
+      <span class="score-val">40%</span>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.9rem;margin:1.5rem 0 .5rem;">
+      Similarity is computed with Levenshtein edit distance after normalizing both strings
+      (lowercase, strip punctuation, collapse whitespace). A two-pass search strategy maximizes recall:
+    </p>
+    <div class="code-wrap">
+      <pre><span class="cm"># Pass 1: broad — search by title, score by artist</span>
+search3(query=<span class="str">"Blinding Lights"</span>, songCount=20)
+
+<span class="cm"># Pass 2: narrow — if no match, try artist + title combined</span>
+search3(query=<span class="str">"The Weeknd Blinding Lights"</span>, songCount=20)</pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.9rem;margin-top:1rem;">
+      <strong style="color:var(--text);">Tuning:</strong>
+      default threshold <code>0.80</code> is a good balance.
+      Lower to <code>0.70</code> for more aggressive matching (may produce false positives).
+      Raise to <code>0.90</code> for strict matching (more tracks left unmatched but no wrong songs).
+    </p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- STATE -->
+<section id="state">
+  <div class="container reveal">
+    <span class="section-tag">Incremental Updates</span>
+    <h2>Grows with your library</h2>
+    <p class="lead">The state file is what makes weekly runs work. It never adds duplicates and always picks up where it left off.</p>
+
+    <div class="state-flow">
+      <div class="state-box">
+        <div class="icon">📄</div>
+        <h4>CSV tracks</h4>
+        <p>All Spotify URIs from Exportify</p>
+      </div>
+      <div class="state-arrow">→</div>
+      <div class="state-box">
+        <div class="icon">🗂️</div>
+        <h4>State file</h4>
+        <p>URI → Navidrome ID map<br/>+ unmatched list</p>
+      </div>
+      <div class="state-arrow">→</div>
+      <div class="state-box">
+        <div class="icon">🎵</div>
+        <h4>Navidrome</h4>
+        <p>Playlist updated<br/>no duplicates</p>
+      </div>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:.75rem;">What happens each run:</p>
+    <div class="code-wrap">
+      <pre>[update] "Chill Mix" — retry 8 unmatched, 3 new tracks
+  ✓ (retry) Blinding Lights — The Weeknd (91%)   <span class="cm"># now in library</span>
+  ✓ (retry) Levitating — Dua Lipa (95%)
+  ✗ (retry) Some Obscure Track — Artist (best 38%)  <span class="cm"># still missing</span>
+  ✓ (new)   New Song — Artist (89%)               <span class="cm"># added to Spotify playlist</span>
+  added 3 songs to playlist id=a1b2c3d4</pre>
+      <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+    </div>
+
+    <p style="color:var(--text-muted);font-size:.85rem;margin-top:.75rem;">
+      If a Navidrome playlist is accidentally deleted, SpotSonic finds it by name via <code>getPlaylists</code>
+      or recreates it from the full matched-URIs history in the state file.
+    </p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- SCHEDULING -->
+<section id="scheduling">
+  <div class="container reveal">
+    <span class="section-tag">Scheduling</span>
+    <h2>Set it and forget it</h2>
+    <p class="lead">Run SpotSonic automatically every week so new songs added to your library are picked up without any manual effort.</p>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab(this,'wsl')">WSL / Linux cron</button>
+      <button class="tab" onclick="switchTab(this,'windows')">Windows Task Scheduler</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-wsl">
+      <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1rem;">
+        Edit <code>scripts/run.sh</code> with your Navidrome credentials, then install the cron job:
+      </p>
+      <div class="code-wrap">
+        <pre><span class="cm"># 1. Make scripts executable</span>
+chmod +x scripts/run.sh scripts/setup_cron.sh
+
+<span class="cm"># 2. Install weekly cron (Monday 09:00)</span>
+bash scripts/setup_cron.sh
+
+<span class="cm"># 3. Edit crontab to set your password</span>
+crontab -e
+
+<span class="cm"># 4. Verify it's installed</span>
+crontab -l</pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-top:.75rem;">
+        Or add it manually — this runs every Monday at 09:00:
+      </p>
+      <div class="code-wrap">
+        <pre>0 9 * * 1 NAVIDROME_PASSWORD='secret' /path/to/spotsonic/scripts/run.sh</pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-top:.75rem;">
+        WSL cron may need to be started manually. Add <code>sudo service cron start</code> to <code>~/.bashrc</code>
+        or configure it via <code>/etc/wsl.conf</code>.
+      </p>
+    </div>
+
+    <div class="tab-panel" id="tab-windows">
+      <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:1rem;">
+        Run SpotSonic through WSL using Windows Task Scheduler (run as Administrator):
+      </p>
+      <div class="code-wrap">
+        <pre>$action = New-ScheduledTaskAction `
+  -Execute  "wsl.exe" `
+  -Argument "-e bash /mnt/d/Github/SpotSonic/scripts/run.sh"
+
+$trigger = New-ScheduledTaskTrigger `
+  -Weekly -DaysOfWeek Monday -At 9am
+
+Register-ScheduledTask `
+  -TaskName  "SpotSonic Weekly" `
+  -Action    $action `
+  -Trigger   $trigger `
+  -RunLevel  Highest</pre>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:.85rem;margin-top:.75rem;">
+        Set <code>NAVIDROME_PASSWORD</code> inside <code>scripts/run.sh</code> before registering the task.
+        Logs are written to <code>spotsonic.log</code> in the project directory.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>
+    <a href="https://github.com/justsky/spotsonic" target="_blank" rel="noopener">GitHub</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/justsky/spotsonic/releases" target="_blank" rel="noopener">Releases</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/justsky/spotsonic/issues" target="_blank" rel="noopener">Issues</a>
+    &nbsp;·&nbsp; MIT License
+  </p>
+  <p style="margin-top:.5rem;">SpotSonic is not affiliated with Spotify or Navidrome.</p>
+</footer>
+
+<script>
+  // Hamburger menu
+  const hamburger = document.getElementById('hamburger');
+  const navLinks  = document.getElementById('nav-links');
+  hamburger.addEventListener('click', () => navLinks.classList.toggle('open'));
+  document.querySelectorAll('.nav-links a').forEach(a =>
+    a.addEventListener('click', () => navLinks.classList.remove('open'))
+  );
+
+  // Tabs
+  function switchTab(btn, id) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + id).classList.add('active');
+  }
+
+  // Copy buttons
+  function copyCode(btn) {
+    const pre  = btn.previousElementSibling;
+    const text = pre.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+    });
+  }
+
+  // Scroll-reveal
+  const observer = new IntersectionObserver(
+    entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+    { threshold: 0.1 }
+  );
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Terminal animation
+  const lines = [
+    { text: '$ spotsonic -server http://localhost:4533 \\', cls: 't-cmd' },
+    { text: '    -input ./spotify_playlists/ -state state.json', cls: 't-cmd' },
+    { text: '' },
+    { text: '[1/119] 505_vibes_but_better.csv', cls: 't-head' },
+    { text: '  [new] "505 vibes but better" — 12 tracks', cls: 't-info' },
+    { text: '    ✓ 505 — Arctic Monkeys (96%)', cls: 't-ok' },
+    { text: '    ✓ Apocalypse — Cigarettes After Sex (94%)', cls: 't-ok' },
+    { text: '    ✗ Ghost — Some Artist (best 38%)', cls: 't-err' },
+    { text: '  matched 10/12 (83%)  created id=a1b2c3', cls: 't-dim' },
+    { text: '' },
+    { text: '[2/119] Alone_Again.csv', cls: 't-head' },
+    { text: '  [update] — retry 3 unmatched, 0 new', cls: 't-info' },
+    { text: '    ✓ (retry) Ghost — Some Artist (91%)', cls: 't-ok' },
+    { text: '  added 1 song to playlist id=d4e5f6', cls: 't-dim' },
+  ];
+
+  const body = document.getElementById('terminal-body');
+  let i = 0;
+  function addLine() {
+    if (i >= lines.length) return;
+    const l = lines[i++];
+    const span = document.createElement('span');
+    span.className = 't-line ' + (l.cls || 't-info');
+    span.textContent = l.text;
+    body.appendChild(span);
+    body.scrollTop = body.scrollHeight;
+    setTimeout(addLine, l.text === '' ? 80 : l.text.startsWith('$') ? 60 : 90);
+  }
+  setTimeout(addLine, 600);
+</script>
+</body>
+</html>
