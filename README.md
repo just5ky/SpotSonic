@@ -1,9 +1,9 @@
 # SpotSonic
 
-[![CI](https://github.com/justsky/spotsonic/actions/workflows/ci.yml/badge.svg)](https://github.com/justsky/spotsonic/actions/workflows/ci.yml)
-[![Release](https://github.com/justsky/spotsonic/actions/workflows/release.yml/badge.svg)](https://github.com/justsky/spotsonic/releases)
-[![Go Report Card](https://goreportcard.com/badge/github.com/justsky/spotsonic)](https://goreportcard.com/report/github.com/justsky/spotsonic)
-[![Docs](https://img.shields.io/badge/docs-justsky.github.io%2Fspotsonic-green)](https://justsky.github.io/spotsonic)
+[![CI](https://github.com/just5ky/spotsonic/actions/workflows/ci.yml/badge.svg)](https://github.com/just5ky/spotsonic/actions/workflows/ci.yml)
+[![Release](https://github.com/just5ky/spotsonic/actions/workflows/release.yml/badge.svg)](https://github.com/just5ky/spotsonic/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/just5ky/spotsonic)](https://goreportcard.com/report/github.com/just5ky/spotsonic)
+[![Docs](https://img.shields.io/badge/docs-just5ky.github.io%2Fspotsonic-green)](https://just5ky.github.io/spotsonic)
 
 Convert [Exportify](https://github.com/watsonbox/exportify) CSV playlists into Navidrome playlists via the Subsonic API, with incremental weekly updates.
 
