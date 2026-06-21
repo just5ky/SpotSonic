@@ -1,11 +1,11 @@
 package subsonic
 
 import (
+	crand "crypto/rand"
 	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,6 +16,8 @@ const (
 	apiVersion = "1.16.0"
 	clientName = "SpotSonic"
 	chunkSize  = 200
+	maxRetries = 3
+	retryDelay = time.Second
 )
 
 // Client is a Subsonic/Navidrome REST API client.
@@ -135,42 +137,67 @@ func (c *Client) updatePlaylist(playlistID string, songIDsToAdd []string) error 
 }
 
 func (c *Client) get(method string, params url.Values) (*SubsonicResponse, error) {
-	u, err := url.Parse(fmt.Sprintf("%s/rest/%s", c.baseURL, method))
+	base, err := url.Parse(fmt.Sprintf("%s/rest/%s", c.baseURL, method))
 	if err != nil {
 		return nil, err
 	}
-	q := c.authParams()
-	for k, vs := range params {
-		for _, v := range vs {
-			q.Add(k, v)
+	var lastErr error
+	for attempt := range maxRetries {
+		if attempt > 0 {
+			time.Sleep(retryDelay * (1 << uint(attempt-1)))
 		}
+		q := c.authParams()
+		for k, vs := range params {
+			for _, v := range vs {
+				q.Add(k, v)
+			}
+		}
+		u := *base
+		u.RawQuery = q.Encode()
+		sr, transient, err := c.doRequest(u.String())
+		if err == nil {
+			return sr, nil
+		}
+		if !transient {
+			return nil, fmt.Errorf("%s: %w", method, err)
+		}
+		lastErr = fmt.Errorf("%s: %w", method, err)
 	}
-	u.RawQuery = q.Encode()
+	return nil, lastErr
+}
 
-	resp, err := c.http.Get(u.String())
+func (c *Client) doRequest(rawURL string) (*SubsonicResponse, bool, error) {
+	resp, err := c.http.Get(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", method, err)
+		return nil, true, err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 500 {
+		return nil, true, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, false, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
+		return nil, true, fmt.Errorf("read body: %w", err)
 	}
 
 	var result Response
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("decode %s response: %w", method, err)
+		return nil, false, fmt.Errorf("decode response: %w", err)
 	}
 
-	sr := &result.SubsonicResponse
-	if sr.Status != "ok" {
-		if sr.Error != nil {
-			return nil, fmt.Errorf("subsonic error %d: %s", sr.Error.Code, sr.Error.Message)
+	sub := &result.SubsonicResponse
+	if sub.Status != "ok" {
+		if sub.Error != nil {
+			return nil, false, fmt.Errorf("subsonic error %d: %s", sub.Error.Code, sub.Error.Message)
 		}
-		return nil, fmt.Errorf("subsonic status: %s", sr.Status)
+		return nil, false, fmt.Errorf("subsonic status: %s", sub.Status)
 	}
-	return sr, nil
+	return sub, false, nil
 }
 
 func (c *Client) authParams() url.Values {
@@ -193,8 +220,11 @@ func md5hex(s string) string {
 func randomSalt() string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, 12)
-	for i := range b {
-		b[i] = chars[rand.Intn(len(chars))]
+	if _, err := crand.Read(b); err != nil {
+		panic("crypto/rand unavailable: " + err.Error())
+	}
+	for i, v := range b {
+		b[i] = chars[int(v)%len(chars)]
 	}
 	return string(b)
 }

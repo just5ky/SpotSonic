@@ -63,7 +63,7 @@ func (c *Converter) ConvertPath(path string) error {
 
 	// always save state even if some files errored
 	if saveErr := c.saveState(); saveErr != nil {
-		log.Printf("warning: could not save state: %v", saveErr)
+		log.Printf("ERROR: could not save state: %v", saveErr)
 	}
 	return err
 }
@@ -288,9 +288,14 @@ func (c *Converter) writeUnmatchedReport(playlist string, unmatched []state.Trac
 		return
 	}
 	for _, u := range unmatched {
-		_ = c.report.Write([]string{playlist, u.Name, u.PrimaryArtist, u.Album})
+		if err := c.report.Write([]string{playlist, u.Name, u.PrimaryArtist, u.Album}); err != nil {
+			log.Printf("warning: write unmatched report: %v", err)
+		}
 	}
 	c.report.Flush()
+	if err := c.report.Error(); err != nil {
+		log.Printf("warning: flush unmatched report: %v", err)
+	}
 }
 
 func (c *Converter) loadState() error {

@@ -40,7 +40,7 @@ func Parse(r io.Reader) ([]Track, error) {
 	idx := buildIndex(header)
 
 	for _, col := range []string{"Track URI", "Track Name", "Artist Name(s)"} {
-		if _, ok := idx[col]; !ok {
+		if _, ok := idx[strings.ToLower(col)]; !ok {
 			return nil, fmt.Errorf("missing required column %q", col)
 		}
 	}
@@ -77,13 +77,13 @@ func Parse(r io.Reader) ([]Track, error) {
 func buildIndex(header []string) map[string]int {
 	m := make(map[string]int, len(header))
 	for i, h := range header {
-		m[strings.TrimSpace(h)] = i
+		m[strings.ToLower(strings.TrimSpace(h))] = i
 	}
 	return m
 }
 
 func get(row []string, idx map[string]int, col string) string {
-	i, ok := idx[col]
+	i, ok := idx[strings.ToLower(col)]
 	if !ok || i >= len(row) {
 		return ""
 	}

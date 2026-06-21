@@ -17,7 +17,7 @@ func main() {
 
 	server := flag.String("server", "", "Navidrome URL (e.g. http://localhost:4533)")
 	user := flag.String("user", "", "Navidrome username")
-	pass := flag.String("password", "", "Navidrome password")
+	pass := flag.String("password", "", "Navidrome password (env: SPOTSONIC_PASSWORD)")
 	input := flag.String("input", ".", "Input CSV file or directory of CSV files")
 	threshold := flag.Float64("threshold", 0.80, "Fuzzy match threshold 0.0–1.0")
 	dryRun := flag.Bool("dry-run", false, "Preview matches without creating or updating playlists")
@@ -40,13 +40,17 @@ func main() {
 
 	flag.Parse()
 
+	if *pass == "" {
+		*pass = os.Getenv("SPOTSONIC_PASSWORD")
+	}
+
 	if *showVersion {
 		fmt.Printf("SpotSonic %s\n", version)
 		return
 	}
 
 	if *server == "" || *user == "" || *pass == "" {
-		fmt.Fprintln(os.Stderr, "error: -server, -user, and -password are required")
+		fmt.Fprintln(os.Stderr, "error: -server, -user, and -password (or SPOTSONIC_PASSWORD env var) are required")
 		flag.Usage()
 		os.Exit(1)
 	}
