@@ -86,7 +86,7 @@ func levenshtein(a, b string) int {
 			if ra[i-1] == rb[j-1] {
 				curr[j] = prev[j-1]
 			} else {
-				curr[j] = 1 + min3(prev[j], curr[j-1], prev[j-1])
+				curr[j] = 1 + min(prev[j], curr[j-1], prev[j-1])
 			}
 		}
 		prev, curr = curr, prev
@@ -94,15 +94,3 @@ func levenshtein(a, b string) int {
 	return prev[lb]
 }
 
-func min3(a, b, c int) int {
-	if a < b {
-		if a < c {
-			return a
-		}
-		return c
-	}
-	if b < c {
-		return b
-	}
-	return c
-}

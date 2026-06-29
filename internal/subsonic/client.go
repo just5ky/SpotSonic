@@ -88,7 +88,7 @@ func (c *Client) CreatePlaylist(name string, songIDs []string) (string, error) {
 		if end > len(songIDs) {
 			end = len(songIDs)
 		}
-		if err := c.updatePlaylist(pid, songIDs[i:end]); err != nil {
+		if err := c.UpdatePlaylist(pid, songIDs[i:end]); err != nil {
 			return pid, fmt.Errorf("update playlist chunk %d: %w", i/chunkSize+1, err)
 		}
 	}
@@ -122,12 +122,8 @@ func (c *Client) FindPlaylistByName(name string) (string, error) {
 	return "", nil
 }
 
-// UpdatePlaylist appends song IDs to an existing playlist (exported for use by converter).
+// UpdatePlaylist appends song IDs to an existing playlist.
 func (c *Client) UpdatePlaylist(playlistID string, songIDsToAdd []string) error {
-	return c.updatePlaylist(playlistID, songIDsToAdd)
-}
-
-func (c *Client) updatePlaylist(playlistID string, songIDsToAdd []string) error {
 	params := url.Values{"playlistId": {playlistID}}
 	for _, id := range songIDsToAdd {
 		params.Add("songIdToAdd", id)
@@ -218,13 +214,9 @@ func md5hex(s string) string {
 }
 
 func randomSalt() string {
-	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, 12)
+	b := make([]byte, 6)
 	if _, err := crand.Read(b); err != nil {
 		panic("crypto/rand unavailable: " + err.Error())
 	}
-	for i, v := range b {
-		b[i] = chars[int(v)%len(chars)]
-	}
-	return string(b)
+	return fmt.Sprintf("%x", b)
 }
