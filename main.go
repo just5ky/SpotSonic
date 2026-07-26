@@ -10,7 +10,7 @@ import (
 	"github.com/justsky/spotsonic/internal/subsonic"
 )
 
-const version = "1.0.0"
+var version = "dev"
 
 func main() {
 	log.SetFlags(0)
@@ -21,6 +21,7 @@ func main() {
 	input := flag.String("input", ".", "Input CSV file or directory of CSV files")
 	threshold := flag.Float64("threshold", 0.80, "Fuzzy match threshold 0.0–1.0")
 	dryRun := flag.Bool("dry-run", false, "Preview matches without creating or updating playlists")
+	quiet := flag.Bool("quiet", false, "Suppress per-track match/no-match log lines (summary lines still shown)")
 	reportFile := flag.String("report", "", "Write currently unmatched tracks to this CSV file")
 	stateFile := flag.String("state", "spotsonic-state.json", "State file for incremental updates (tracks matched/unmatched between runs)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
@@ -61,6 +62,7 @@ func main() {
 		DryRun:     *dryRun,
 		ReportFile: *reportFile,
 		StateFile:  *stateFile,
+		Quiet:      *quiet,
 	})
 
 	if *dryRun {
