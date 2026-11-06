@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/justsky/spotsonic/internal/csvparser"
@@ -21,20 +22,36 @@ type Config struct {
 	DryRun     bool    // preview only, do not create or update playlists
 	ReportFile string  // path to write unmatched tracks CSV; empty = skip
 	StateFile  string  // path to persistent state JSON
+	Quiet      bool    // suppress per-track match/no-match log lines; summary lines still shown
 }
+
+// searchConcurrency bounds simultaneous Navidrome search requests.
+const searchConcurrency = 8
 
 // Converter orchestrates CSV parsing, Navidrome API searching, and playlist management.
 type Converter struct {
-	client     *subsonic.Client
-	cfg        Config
-	st         *state.State
-	report     *csv.Writer
-	reportFile *os.File
+	client      *subsonic.Client
+	cfg         Config
+	st          *state.State
+	report      *csv.Writer
+	reportFile  *os.File
+	searchMu    sync.Mutex
+	searchCache map[string]searchCacheEntry
+}
+
+// searchCacheEntry stores one cached Search3 result, including a miss/error.
+type searchCacheEntry struct {
+	songs []subsonic.Song
+	err   error
 }
 
 // New creates a Converter with the given Subsonic client and config.
 func New(client *subsonic.Client, cfg Config) *Converter {
-	return &Converter{client: client, cfg: cfg}
+	return &Converter{
+		client:      client,
+		cfg:         cfg,
+		searchCache: make(map[string]searchCacheEntry),
+	}
 }
 
 // ConvertPath converts a single CSV file or every CSV in a directory.
@@ -164,18 +181,16 @@ func (c *Converter) updatePlaylist(name string, tracks []csvparser.Track, ps *st
 	// match retries
 	var retriedIDs []string
 	var stillUnmatched []state.Track
-	for _, t := range toRetry {
-		id, score, ok := c.findTrack(t)
-		if ok {
-			retriedIDs = append(retriedIDs, id)
-			ps.MatchedURIs[t.URI] = id
-			log.Printf("    ✓ (retry) %s — %s (%.0f%%)", t.Name, t.PrimaryArtist, score*100)
+	for _, r := range c.matchConcurrently(toRetry) {
+		if r.ok {
+			retriedIDs = append(retriedIDs, r.id)
+			ps.MatchedURIs[r.track.URI] = r.id
 		} else {
 			stillUnmatched = append(stillUnmatched, state.Track{
-				URI: t.URI, Name: t.Name, PrimaryArtist: t.PrimaryArtist, Album: t.Album,
+				URI: r.track.URI, Name: r.track.Name, PrimaryArtist: r.track.PrimaryArtist, Album: r.track.Album,
 			})
-			log.Printf("    ✗ (retry) %s — %s (best %.0f%%)", t.Name, t.PrimaryArtist, score*100)
 		}
+		c.logMatch("(retry)", r.track, r.score, r.ok)
 	}
 
 	// match new tracks from CSV
@@ -233,33 +248,95 @@ func (c *Converter) ensurePlaylistExists(name string, ps *state.PlaylistState) (
 	return pid, nil
 }
 
+// matchResult is one track's search outcome, produced by matchConcurrently.
+type matchResult struct {
+	track csvparser.Track
+	id    string
+	score float64
+	ok    bool
+}
+
+// matchConcurrently runs findTrack for every track in a bounded worker pool,
+// returning results in the same order as tracks.
+func (c *Converter) matchConcurrently(tracks []csvparser.Track) []matchResult {
+	results := make([]matchResult, len(tracks))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, searchConcurrency)
+	for i, t := range tracks {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, t csvparser.Track) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			id, score, ok := c.findTrack(t)
+			results[i] = matchResult{track: t, id: id, score: score, ok: ok}
+		}(i, t)
+	}
+	wg.Wait()
+	return results
+}
+
+// logMatch prints a per-track match/no-match line unless quiet mode is set.
+// label is an optional prefix like "(retry)"; pass "" for none.
+func (c *Converter) logMatch(label string, t csvparser.Track, score float64, ok bool) {
+	if c.cfg.Quiet {
+		return
+	}
+	mark, suffix := "✓", fmt.Sprintf("(%.0f%%)", score*100)
+	if !ok {
+		mark, suffix = "✗", fmt.Sprintf("(best %.0f%%)", score*100)
+	}
+	if label != "" {
+		label += " "
+	}
+	log.Printf("    %s %s%s — %s %s", mark, label, t.Name, t.PrimaryArtist, suffix)
+}
+
 // matchAll searches Navidrome for each track and returns matched IDs, URI→ID map, and unmatched.
 func (c *Converter) matchAll(playlistName string, tracks []csvparser.Track) ([]string, map[string]string, []state.Track) {
 	var matchedIDs []string
 	matchedURIs := make(map[string]string)
 	var unmatched []state.Track
 
-	for _, t := range tracks {
-		id, score, ok := c.findTrack(t)
-		if ok {
-			matchedIDs = append(matchedIDs, id)
-			matchedURIs[t.URI] = id
-			log.Printf("    ✓ %s — %s (%.0f%%)", t.Name, t.PrimaryArtist, score*100)
+	for _, r := range c.matchConcurrently(tracks) {
+		if r.ok {
+			matchedIDs = append(matchedIDs, r.id)
+			matchedURIs[r.track.URI] = r.id
 		} else {
 			unmatched = append(unmatched, state.Track{
-				URI: t.URI, Name: t.Name, PrimaryArtist: t.PrimaryArtist, Album: t.Album,
+				URI: r.track.URI, Name: r.track.Name, PrimaryArtist: r.track.PrimaryArtist, Album: r.track.Album,
 			})
-			log.Printf("    ✗ %s — %s (best %.0f%%)", t.Name, t.PrimaryArtist, score*100)
 		}
+		c.logMatch("", r.track, r.score, r.ok)
 	}
 	return matchedIDs, matchedURIs, unmatched
+}
+
+// search wraps client.Search3 with a per-run cache keyed by query, so
+// identical queries (e.g. the same popular track across multiple playlists)
+// hit the network at most once per run.
+func (c *Converter) search(query string) ([]subsonic.Song, error) {
+	c.searchMu.Lock()
+	if e, ok := c.searchCache[query]; ok {
+		c.searchMu.Unlock()
+		return e.songs, e.err
+	}
+	c.searchMu.Unlock()
+
+	songs, err := c.client.Search3(query, 20)
+
+	c.searchMu.Lock()
+	c.searchCache[query] = searchCacheEntry{songs: songs, err: err}
+	c.searchMu.Unlock()
+
+	return songs, err
 }
 
 // findTrack searches Navidrome for a matching song using two strategies:
 // 1. search by title alone, score by artist
 // 2. search by "artist title" combined
 func (c *Converter) findTrack(t csvparser.Track) (id string, score float64, ok bool) {
-	songs, err := c.client.Search3(t.Name, 20)
+	songs, err := c.search(t.Name)
 	if err == nil && len(songs) > 0 {
 		if s, sc, found := matcher.BestMatch(songs, t.Name, t.PrimaryArtist, c.cfg.Threshold); found {
 			return s.ID, sc, true
@@ -267,7 +344,7 @@ func (c *Converter) findTrack(t csvparser.Track) (id string, score float64, ok b
 	}
 
 	query := t.PrimaryArtist + " " + t.Name
-	songs2, err2 := c.client.Search3(query, 20)
+	songs2, err2 := c.search(query)
 	if err2 == nil && len(songs2) > 0 {
 		s, sc, found := matcher.BestMatch(songs2, t.Name, t.PrimaryArtist, c.cfg.Threshold)
 		if found {

@@ -49,6 +49,7 @@ Flags:
   -state      string   State file path (default "spotsonic-state.json")
   -threshold  float    Fuzzy match threshold 0.0–1.0 (default 0.80)
   -dry-run             Preview matches without creating or modifying playlists
+  -quiet               Suppress per-track match/no-match log lines (summary lines still shown)
   -report     string   Write currently unmatched tracks to this CSV file
   -version             Print version and exit
 ```

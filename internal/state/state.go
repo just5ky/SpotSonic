@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-const version = 1
-
 // Track is a minimal record of an unmatched Spotify track kept between runs.
 type Track struct {
 	URI           string `json:"uri"`
@@ -26,14 +24,12 @@ type PlaylistState struct {
 
 // State is the top-level state file structure.
 type State struct {
-	Version   int                       `json:"version"`
 	Playlists map[string]*PlaylistState `json:"playlists"`
 }
 
 // New returns an empty State.
 func New() *State {
 	return &State{
-		Version:   version,
 		Playlists: make(map[string]*PlaylistState),
 	}
 }
@@ -72,15 +68,6 @@ func (s *State) Save(path string) error {
 		return err
 	}
 	return nil
-}
-
-// NewPlaylist creates a fresh PlaylistState.
-func NewPlaylist(navidromeID string) *PlaylistState {
-	return &PlaylistState{
-		NavidromeID: navidromeID,
-		MatchedURIs: make(map[string]string),
-		LastUpdated: time.Now(),
-	}
 }
 
 // UnmatchedURISet returns the set of Spotify URIs in Unmatched for fast lookup.
