@@ -77,6 +77,9 @@ func Parse(r io.Reader) ([]Track, error) {
 func buildIndex(header []string) map[string]int {
 	m := make(map[string]int, len(header))
 	for i, h := range header {
+		// Strip a UTF-8 BOM (U+FEFF), which some exporters prepend to the first
+		// header cell; strings.TrimSpace does not remove it.
+		h = strings.TrimPrefix(h, "\xEF\xBB\xBF")
 		m[strings.ToLower(strings.TrimSpace(h))] = i
 	}
 	return m
