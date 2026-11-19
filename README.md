@@ -31,7 +31,7 @@ Convert [Exportify](https://github.com/watsonbox/exportify) CSV playlists into N
 ## Installation
 
 ```bash
-git clone https://github.com/justsky/spotsonic
+git clone https://github.com/just5ky/spotsonic
 cd spotsonic
 go build -o spotsonic .
 ```

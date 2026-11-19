@@ -6,8 +6,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/justsky/spotsonic/internal/converter"
-	"github.com/justsky/spotsonic/internal/subsonic"
+	"github.com/just5ky/spotsonic/internal/converter"
+	"github.com/just5ky/spotsonic/internal/subsonic"
 )
 
 var version = "dev"

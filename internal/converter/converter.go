@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/justsky/spotsonic/internal/csvparser"
-	"github.com/justsky/spotsonic/internal/matcher"
-	"github.com/justsky/spotsonic/internal/state"
-	"github.com/justsky/spotsonic/internal/subsonic"
+	"github.com/just5ky/spotsonic/internal/csvparser"
+	"github.com/just5ky/spotsonic/internal/matcher"
+	"github.com/just5ky/spotsonic/internal/state"
+	"github.com/just5ky/spotsonic/internal/subsonic"
 )
 
 // Config holds converter options.
