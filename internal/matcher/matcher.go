@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/justsky/spotsonic/internal/subsonic"
+	"github.com/just5ky/spotsonic/internal/subsonic"
 )
 
 // BestMatch returns the highest-scoring song from candidates.
